@@ -1,6 +1,6 @@
 {
   "name": "OurkingMail",
-  "short_name": "MoeMail",
+  "short_name": "KingMail",
   "description": "Our王专属邮箱服务",
   "start_url": "/",
   "display": "standalone",
