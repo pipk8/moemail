@@ -1,3 +1,4 @@
+// 修改 app/api/emails/generate/route.ts
 import { NextResponse } from "next/server"
 import { nanoid } from "nanoid"
 import { createDb } from "@/lib/db"
@@ -11,6 +12,29 @@ import { getUserRole } from "@/lib/auth"
 import { ROLES } from "@/lib/permissions"
 
 export const runtime = "edge"
+
+// ⭐⭐⭐ 使用 Web Crypto API 生成哈希 ⭐⭐⭐
+async function generateEmailId(emailAddress: string): Promise<string> {
+  const email = 'PiPk'+emailAddress.toLowerCase().trim()
+  
+  // 使用 Web Crypto API 计算 MD5 哈希
+  const encoder = new TextEncoder()
+  const data = encoder.encode(email)
+  
+  // 计算 MD5 哈希
+  const hashBuffer = await crypto.subtle.digest('MD5', data)
+  const hashArray = Array.from(new Uint8Array(hashBuffer))
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+  
+  // 格式化为 UUID 样式
+  return [
+    hashHex.substring(0, 8),
+    hashHex.substring(8, 12),
+    hashHex.substring(12, 16),
+    hashHex.substring(16, 20),
+    hashHex.substring(20, 32)
+  ].join('-')
+}
 
 export async function POST(request: Request) {
   const db = createDb()
@@ -64,6 +88,10 @@ export async function POST(request: Request) {
     }
 
     const address = `${name || nanoid(8)}@${domain}`
+    
+    // ⭐⭐⭐ 生成ID（异步调用）⭐⭐⭐
+    let emailId = await generateEmailId(address)
+    
     const existingEmail = await db.query.emails.findFirst({
       where: eq(sql`LOWER(${emails.address})`, address.toLowerCase())
     })
@@ -75,12 +103,23 @@ export async function POST(request: Request) {
       )
     }
 
+    // 检查ID是否已存在
+    const existingId = await db.query.emails.findFirst({
+      where: eq(emails.id, emailId)
+    })
+    
+    if (existingId) {
+      // ID冲突，使用随机UUID
+      emailId = crypto.randomUUID()
+    }
+
     const now = new Date()
     const expires = expiryTime === 0 
       ? new Date('9999-01-01T00:00:00.000Z')
       : new Date(now.getTime() + expiryTime)
     
     const emailData: typeof emails.$inferInsert = {
+      id: emailId,
       address,
       createdAt: now,
       expiresAt: expires,
@@ -102,4 +141,4 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
-} 
+}
